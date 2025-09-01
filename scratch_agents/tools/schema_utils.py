@@ -20,6 +20,9 @@ def function_to_input_schema(func) -> dict:
     
     parameters = {}
     for param in signature.parameters.values():
+        # Skip 'context' parameter - it will be auto-injected
+        if param.name == "context":
+            continue
         try:
             param_type = type_map.get(param.annotation, "string")  
         except KeyError as e:
@@ -31,7 +34,7 @@ def function_to_input_schema(func) -> dict:
     required = [
         param.name  
         for param in signature.parameters.values()  
-        if param.default == inspect._empty  
+        if param.default == inspect._empty and param.name != "context"  
     ]
     
     return {

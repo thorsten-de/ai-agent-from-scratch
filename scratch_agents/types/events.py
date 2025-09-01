@@ -12,7 +12,6 @@ class Event(LlmResponse):
     execution_id: str
     timestamp: float = Field(default_factory=lambda: datetime.now().timestamp())
     author: str
-    # When set, indicates a structured final tool is required for completion
     required_output_tool: Optional[str] = None
     
     def is_final_response(self) -> bool:
@@ -20,8 +19,6 @@ class Event(LlmResponse):
         tool_calls = self.get_tool_calls()
         tool_results = self.get_tool_results()
         
-        # If a structured final answer is required, consider it final when we have a successful
-        # result from the required tool
         if self.required_output_tool:
             for tr in tool_results:
                 if tr.name == self.required_output_tool and tr.status == "success":
