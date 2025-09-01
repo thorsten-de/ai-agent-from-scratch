@@ -1,4 +1,4 @@
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Type, Union, Optional
 from abc import ABC, abstractmethod
 import json
 from .schema_utils import format_tool_definition
@@ -10,7 +10,7 @@ class BaseTool(ABC):
         self, 
         name: str = None, 
         description: str = None, 
-        tool_definition: Union[Dict[str, Any], str] = None,
+        tool_definition: Optional[Union[Dict[str, Any], str]] = None,
         pydantic_input_model: Type = None
     ):
         self.name = name or self.__class__.__name__
@@ -22,15 +22,15 @@ class BaseTool(ABC):
         elif tool_definition is not None:
             self._tool_definition = tool_definition
         else:
-            self._tool_definition = None  # Generate later
+            self._tool_definition = None  
 
     @property
-    def tool_definition(self) -> Dict[str, Any]:
-        if self._tool_definition is None:  #A
-            self._tool_definition = self._generate_definition()  #A
+    def tool_definition(self):
+        if self._tool_definition is None:
+            self._tool_definition = self._generate_definition()
         return self._tool_definition
     
-    def _generate_definition(self) -> Dict[str, Any]:
+    def _generate_definition(self):
         if self.pydantic_input_model:
             try:
                 from pydantic import BaseModel
@@ -41,13 +41,9 @@ class BaseTool(ABC):
                     )
             except ImportError:
                 pass
-        # Subclasses should override this method or provide tool_definition
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must either provide a tool_definition, "
-            f"pydantic_input_model, or override _generate_definition()"
-        )
+        else:
+            return None
     
-    @abstractmethod
     async def __call__(self, **kwargs) -> Any:
         return await self.execute(**kwargs)
     
