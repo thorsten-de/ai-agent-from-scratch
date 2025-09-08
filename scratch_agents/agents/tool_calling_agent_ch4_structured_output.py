@@ -47,7 +47,7 @@ class ToolCallingAgent:
                         tool_call_id=tool_call.tool_call_id,
                         name=tool_call.name,
                         status="success",
-                        content=[result_output],
+                        content=str(result_output),
                     )
                 )
             except Exception as e:
@@ -56,7 +56,7 @@ class ToolCallingAgent:
                         tool_call_id=tool_call.tool_call_id,
                         name=tool_call.name,
                         status="error",
-                        content=[str(e)],
+                        content=str(e),
                     )
                 )
         return tool_results

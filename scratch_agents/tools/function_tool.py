@@ -1,4 +1,4 @@
-from typing import Any, Dict, Type, Union, Callable, Optional
+from typing import Any, Dict, Type, Union, Callable, Optional, get_type_hints
 import inspect
 import asyncio
 from .base_tool import BaseTool
@@ -11,28 +11,38 @@ class FunctionTool(BaseTool):
         func: Callable, 
         name: str = None, 
         description: str = None,
-        tool_definition: Union[Dict[str, Any], str] = None
+        tool_definition: Union[Dict[str, Any], str] = None,
+        output_type: str = None
     ):
         self.func = func
-        self.pydantic_input_model = self._detect_pydantic_model(func)  #A
+        self.pydantic_input_model = self._detect_pydantic_model(func)
         
-        name = name or func.__name__  #B
-        description = description or (func.__doc__ or "").strip()  #B
+        name = name or func.__name__
+        description = description or (func.__doc__ or "").strip()
+        
+        if output_type is None:
+            output_type = self._detect_output_type(func)
         
         super().__init__(
             name=name, 
             description=description, 
             tool_definition=tool_definition,
-            pydantic_input_model=self.pydantic_input_model
+            pydantic_input_model=self.pydantic_input_model,
+            output_type=output_type
         )
     
-    async def execute(self, **kwargs) -> Any:
+    async def execute(self, context, **kwargs) -> Any:
+        sig = inspect.signature(self.func)
+        expects_context = 'context' in sig.parameters
+        
         if self.pydantic_input_model:
             args = (self.pydantic_input_model.model_validate(kwargs),)
-            call_kwargs = {}
+            call_kwargs = {'context': context} if expects_context else {}
         else:
             args = ()
             call_kwargs = kwargs
+            if expects_context and 'context' not in call_kwargs:
+                call_kwargs['context'] = context
         
         if inspect.iscoroutinefunction(self.func):
             return await self.func(*args, **call_kwargs)
@@ -62,3 +72,33 @@ class FunctionTool(BaseTool):
         except ImportError:
             pass
         return None
+    
+    def _detect_output_type(self, func: Callable) -> str:
+        """Detect the output type from function's return type hint"""
+        try:
+            type_hints = get_type_hints(func)
+            return_type = type_hints.get('return', None)
+            
+            if return_type is None:
+                return "str"
+            
+            type_mapping = {
+                str: "str",
+                int: "int",
+                float: "float",
+                bool: "bool",
+                list: "list",
+                dict: "dict",
+                tuple: "tuple",
+                type(None): "None"
+            }
+            
+            if return_type in type_mapping:
+                return type_mapping[return_type]
+            
+            raise ValueError(f"Unsupported return type: {return_type}. Only basic types are supported.")
+            
+        except ValueError:
+            raise
+        except Exception:
+            return "str"

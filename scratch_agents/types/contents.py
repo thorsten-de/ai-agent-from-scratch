@@ -13,7 +13,7 @@ class ToolResult(BaseModel):
     tool_call_id: str
     name: str
     status: Literal["success", "error"]
-    content: list
+    content: str
 
 class Message(BaseModel):
     type: Literal["message"] = "message"

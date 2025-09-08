@@ -4,7 +4,8 @@ from .llm_request import LlmRequest
 from .llm_response import LlmResponse
 from ..types.contents import Message, ToolCall, ToolResult
 import json
-from pydantic import Field
+from pydantic import Field, BaseModel
+from typing import Dict, Any, List
 
 class OpenAILlm(BaseLlm):
     """OpenAI LLM implementation"""
@@ -136,7 +137,7 @@ class OpenAILlm(BaseLlm):
                 messages.append({
                     "role": "tool",
                     "tool_call_id": item.tool_call_id,
-                    "content": str(item.content[0]) if item.content else ""
+                    "content": str(item.content) if item.content else ""
                 })
         
         # Flush any remaining assistant message
@@ -146,3 +147,28 @@ class OpenAILlm(BaseLlm):
         model_params = {**self.llm_config}
         
         return messages, model_params
+    
+    async def generate_structured(self, messages: List[Dict[str, Any]], response_format: BaseModel):
+        """Generate structured output using OpenAI's response_format"""
+        try:
+            response = await self.openai_client.chat.completions.parse(
+                model=self.model,
+                messages=messages,
+                response_format=response_format,
+                **self.llm_config
+            )
+            
+            return response.choices[0].message.parsed
+        except Exception as e:
+            return {"error": str(e)}
+        
+    async def embed(self, model, texts: List[str]) -> List[List[float]]:
+        """Get embeddings using OpenAI API"""
+        try:
+            response = await self.openai_client.embeddings.create(
+                model=model,
+                input=texts
+            )
+            return [embedding.embedding for embedding in response.data]
+        except Exception as e:
+            return {"error": str(e)}

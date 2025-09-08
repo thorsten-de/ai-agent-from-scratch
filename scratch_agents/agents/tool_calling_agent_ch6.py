@@ -4,25 +4,30 @@ from ..models.llm_request import LlmRequest
 from ..models.llm_response import LlmResponse
 from ..types.contents import Message, ToolCall
 from ..types.events import Event
-from .execution_context_ch4 import ExecutionContext
+from .execution_context_ch6 import ExecutionContext
 from ..tools.base_tool import BaseTool
 from ..types.contents import ToolResult
 from typing import Type
 from pydantic import BaseModel
 from ..tools.decorator import tool
 import inspect
+from ..sessions.base_session_manager import BaseSessionManager
+from ..sessions.in_memory_session_manager import InMemorySessionManager
+from ..sessions.base_cross_session_manager import BaseCrossSessionManager
 
 class ToolCallingAgent:
     def __init__(self, name: str, model: BaseLlm, 
-                 tools: List[BaseTool], 
-                 instructions: str, 
+                 tools: List[BaseTool] = [], 
+                 instructions: str = "", 
                  max_steps: int = 10, 
                  output_type: Optional[Type[BaseModel]] = None,
                  before_llm_callbacks = None,
                  after_llm_callbacks = None,
                  before_tool_callbacks = None,
                  after_tool_callbacks = None,
-                 after_run_callbacks = None):
+                 after_run_callbacks = None,
+                 session_manager: BaseSessionManager = None,
+                 cross_session_manager: BaseCrossSessionManager = None):
         self.name = name
         self.model = model
         self.max_steps = max_steps
@@ -35,7 +40,8 @@ class ToolCallingAgent:
         self.before_tool_callbacks = before_tool_callbacks or []
         self.after_tool_callbacks = after_tool_callbacks or []
         self.after_run_callbacks = after_run_callbacks or []
-        
+        self.session_manager = session_manager or InMemorySessionManager()  
+        self.cross_session_manager = cross_session_manager
         
     def _setup_tools(self, tools: List[BaseTool]):
         if self.output_type is not None:
@@ -65,6 +71,12 @@ class ToolCallingAgent:
         
         return llm_response
 
+    async def _execute_tool(self, context: ExecutionContext, tool_name: str, tool_input: dict) -> Any:
+        """Execute a tool with context injection if needed"""
+        tool = self.tools[tool_name]
+        
+        # All tools now handle context properly in their execute method
+        return await tool.execute(context, **tool_input)
     
     async def act(self, context: ExecutionContext, tool_calls: List[ToolCall]):
         tool_results = []
@@ -87,7 +99,7 @@ class ToolCallingAgent:
             status = "success"
             if tool_response is None:
                 try:
-                    tool_response = await self.tools[tool_name](**tool_input)
+                    tool_response = await self._execute_tool(context, tool_name, tool_input)
                 except Exception as e:
                     tool_response = str(e)
                     status = "error"
@@ -115,7 +127,7 @@ class ToolCallingAgent:
     
     async def step(self, context: ExecutionContext):
         print(f"[Step {context.current_step + 1}]")
-        llm_request = self._prepare_llm_request(context)
+        llm_request = await self._prepare_llm_request(context)
         llm_response = await self.think(context, llm_request)
         if llm_response.error_message:
             raise RuntimeError(f"LLM error: {llm_response.error_message}")
@@ -139,10 +151,17 @@ class ToolCallingAgent:
             
         context.increment_step()
         
-    async def run(self, user_input: str):
+    async def run(self, user_input: str, 
+                  user_id: str = None,
+                  session_id: str = None):
+        session = self.session_manager.get_or_create_session(session_id, user_id)
         context = ExecutionContext(
             user_input=user_input,
+            session=session,
+            session_manager=self.session_manager,
+            cross_session_manager=self.cross_session_manager,
         )
+        
         user_input_event = Event(
             execution_id=context.execution_id,
             author="user",
@@ -169,24 +188,28 @@ class ToolCallingAgent:
             
         return context.final_result
             
-    def _prepare_llm_request(self, context: ExecutionContext):
+    async def _prepare_llm_request(self, context: ExecutionContext):
         flat_contents = []
         for event in context.events:
             flat_contents.extend(event.content)
             
-        if self.output_tool:
-            tool_choice = "required"
-        elif self.tools:
-            tool_choice = "auto"
-        else:
-            tool_choice = None
-            
-        return LlmRequest(
+        llm_request = LlmRequest(
             instructions=[self.instructions] if self.instructions else [],
             contents=flat_contents,
-            tools_dict=self.tools,
-            tool_choice=tool_choice
+            tools_dict={tool.name:tool for tool in self.tools.values() if tool.tool_definition},
         )
+        
+        for tool in self.tools.values():
+            await tool.process_llm_request(llm_request, context)
+            
+        if self.output_tool:
+            llm_request.tool_choice = "required"
+        elif llm_request.tools_dict:
+            llm_request.tool_choice = "auto"
+        else:
+            llm_request.tool_choice = None
+            
+        return llm_request
     
     def _extract_final_result(self, event: Event):
         if event.required_output_tool:
