@@ -17,6 +17,8 @@ def get_embeddings(texts, model="text-embedding-3-small") -> np.ndarray:
 
 def fixed_length_chunking(text, chunk_size=500, overlap=50) -> list[str]:
     """Split text into fixed-length chunks."""
+    if chunk_size <= 0 or not 0 <= overlap < chunk_size:
+        raise ValueError("Require chunk_size > 0 and 0 <= overlap < chunk_size")
     chunks = []
     start = 0
 

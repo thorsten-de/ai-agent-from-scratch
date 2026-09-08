@@ -179,7 +179,9 @@ class Agent:
             return AgentResult(output=context.final_result, context=context)
         finally:
             if context.code_env is not None:
-                context.code_env.kill()
+                sandbox = context.code_env
+                context.code_env = None
+                sandbox.kill()
 
     async def step(
         self,
@@ -203,6 +205,9 @@ class Agent:
         else:
             # Get LLM's decision
             llm_response = await self.think(llm_request)
+
+        if llm_response.error_message:
+            raise RuntimeError(f"LLM request failed: {llm_response.error_message}")
 
         if verbose:
             self._log_response(llm_response)
@@ -523,12 +528,19 @@ class Agent:
                 from scratch_agents.skills import discover_skills
                 skills = discover_skills(self.skills_path)
                 for skill_info in skills:
-                    sandbox.files.write(
-                        f"/home/user/skills/{skill_info.name}/{skill_info.path.name}",
-                        skill_info.path.read_text(),
-                    )
+                    for path in skill_info.path.rglob("*"):
+                        if path.is_file():
+                            relative = path.relative_to(skill_info.path).as_posix()
+                            sandbox.files.write(
+                                f"/home/user/skills/{skill_info.name}/{relative}",
+                                path.read_bytes(),
+                            )
         except Exception as e:
-            logger.warning(f"Failed to set up code execution environment: {e}")
+            if context.code_env is not None:
+                sandbox = context.code_env
+                context.code_env = None
+                sandbox.kill()
+            raise RuntimeError("Failed to set up code execution environment") from e
 
     def _register_sandbox_tools(self, sandbox) -> None:
         """Register sandbox-executable tools by running their source in the sandbox (CH08)."""

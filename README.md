@@ -36,12 +36,15 @@ notebooks/              # Chapter notebooks
 
 ## Setup
 
+Use Python 3.13 or later. Start from the repository root. `uv sync` installs
+`scratch_agents` as a package as well as its dependencies.
+
 ```bash
 # Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install dependencies
-uv sync
+uv sync --locked
 
 # Set up API keys in .env
 cp .env.example .env
@@ -63,7 +66,33 @@ HF_TOKEN=hf_...                # Required for CH02 GAIA benchmark
 E2B_API_KEY=e2b_...            # Required for CH08 code execution
 ```
 
-At minimum, you need `OPENAI_API_KEY` to follow along with the examples.
+`OPENAI_API_KEY` covers the OpenAI examples, not every cell in every chapter.
+For **Restart Kernel and Run All**, prepare each chapter's prerequisites first:
+
+| Chapters | Additional prerequisites |
+|---|---|
+| CH02 | Anthropic key; Hugging Face account with accepted GAIA access and `HF_TOKEN` |
+| CH03–CH04 | Tavily key; Node.js/npm (`npx`) for the Tavily MCP server; CH04 also needs GAIA access |
+| CH05 | Tavily key and GAIA access/downloads for attachment exercises |
+| CH06 | OpenAI key for model calls and ChromaDB embeddings |
+| CH07 | Tavily key for search examples |
+| CH08 | E2B key; Tavily key only for sandbox tools that use it |
+| CH09 | E2B/Tavily keys when running the specialist agents that use those services |
+| CH10 | OpenAI key |
+
+Set keys in the repository's `.env`. Notebook setup finds this file from the
+chapter directory. Select the project environment's Python kernel in Jupyter.
+If a different environment is selected, install the dependencies in that kernel
+or restart Jupyter with `uv run jupyter lab`.
+
+These examples make real, potentially billable requests. CH02 includes a
+100-request concurrency example and multi-model GAIA evaluation; reduce the
+example counts when doing a quick live check. Model IDs are examples and require
+access from your provider account.
+
+CH05 creates `notebooks/ch05/gaia_workspace` and resets its contents for the
+attachment exercise; do not keep personal files there. CH06 creates its own
+throwaway deletion target, and CH08 uses the GAIA spreadsheet prepared in CH05.
 
 ## Chapters
 
@@ -81,4 +110,34 @@ At minimum, you need `OPENAI_API_KEY` to follow along with the examples.
 
 ## Chapter Snapshot Files
 
-Some notebook directories (ch04, ch05, ch06, ch08, ch09) contain `.py` snapshot files that represent the state of core modules *at that chapter*. This lets each chapter's notebook use the version of the code that matches what has been introduced so far, without exposing features from later chapters.
+Some notebook directories (ch04, ch05, ch06, ch08, ch09) contain `.py` snapshot
+files showing the core modules at that chapter's stage. Use them to compare the
+implementation with the book. The runnable integration examples import
+`scratch_agents`.
+
+## Running the notebooks
+
+Run code cells in order from a fresh kernel. Blocks labeled **Implementation
+excerpt** show part of a class or method; read them with the surrounding book
+explanation. They are not standalone programs.
+
+To run CH08's three optional agent examples, uncomment their calls after setting
+up the required API keys. The Excel example also requires
+`7cc4acfa-63fd-4acc-a1a1-e8e529e0a97f.xlsx` in `notebooks/ch05/gaia_workspace`,
+prepared using the CH05 attachment workflow.
+
+If a parallel workflow has failed or is awaiting approval, it raises
+`ParallelWorkflowIncomplete` (available from `scratch_agents.workflows`). Inspect
+its `branch_results` for each agent's result and context, and `branch_errors` for
+exceptions. Automatic retry/resume is not supported. Re-running the whole
+workflow can repeat actions from branches that already completed.
+
+## Tests
+
+```bash
+uv sync --locked --extra test
+uv run --extra test pytest -q
+```
+
+Tests use simulated external services and do not require API keys. To verify
+provider access and live responses, run the notebooks with your own credentials.

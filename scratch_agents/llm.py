@@ -119,6 +119,8 @@ class LlmClient:
             contents=[Message(role="user", content="Please respond.")],
         )
         response = await self.generate(request)
+        if response.error_message:
+            raise RuntimeError(f"LLM request failed: {response.error_message}")
 
         text = ""
         for item in response.content:

@@ -42,7 +42,7 @@ def create_tasks(tasks: List[Task]) -> str:
     """
     result = []
     for task in tasks:
-        result.append(str(task))
+        result.append(str(Task.model_validate(task)))
     return "\n".join(result)
 
 
